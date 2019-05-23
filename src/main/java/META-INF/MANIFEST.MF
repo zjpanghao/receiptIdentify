@@ -1,0 +1,25 @@
+Manifest-Version: 1.0
+Class-Path: hibernate-validator-6.0.7.Final.jar jackson-databind-2.9.4
+ .jar spring-jcl-5.0.4.RELEASE.jar validation-api-2.0.1.Final.jar jack
+ son-core-2.9.4.jar log4j-to-slf4j-2.10.0.jar snakeyaml-1.19.jar logba
+ ck-classic-1.2.3.jar javax.annotation-api-1.3.2.jar spring-boot-2.0.0
+ .BUILD-20180301.043920-633.jar jboss-logging-3.3.2.Final.jar spring-b
+ eans-5.0.4.RELEASE.jar spring-boot-starter-json-2.0.0.BUILD-20180301.
+ 043900-634.jar log4j-api-2.10.0.jar spring-boot-autoconfigure-2.0.0.B
+ UILD-20180301.043806-635.jar spring-boot-starter-web-2.0.0.BUILD-2018
+ 0301.043912-634.jar spring-boot-starter-tomcat-2.0.0.BUILD-20180301.0
+ 43909-634.jar spring-expression-5.0.4.RELEASE.jar spring-boot-starter
+ -2.0.0.BUILD-20180301.043915-633.jar classmate-1.3.4.jar tomcat-embed
+ -websocket-8.5.28.jar slf4j-api-1.7.25.jar jackson-module-parameter-n
+ ames-2.9.4.jar tomcat-embed-el-8.5.28.jar logback-core-1.2.3.jar spri
+ ng-core-5.0.4.RELEASE.jar spring-webmvc-5.0.4.RELEASE.jar thymeleaf-3
+ .0.9.RELEASE.jar gson-2.8.5.jar jackson-datatype-jsr310-2.9.4.jar unb
+ escape-1.1.5.RELEASE.jar jackson-datatype-jdk8-2.9.4.jar tomcat-embed
+ -core-8.5.28.jar jul-to-slf4j-1.7.25.jar spring-web-5.0.4.RELEASE.jar
+  thymeleaf-spring5-3.0.9.RELEASE.jar spring-context-5.0.4.RELEASE.jar
+  jackson-annotations-2.9.0.jar thymeleaf-extras-java8time-3.0.1.RELEA
+ SE.jar spring-aop-5.0.4.RELEASE.jar spring-boot-starter-thymeleaf-2.0
+ .0.BUILD-20180301.043908-634.jar spring-boot-starter-logging-2.0.0.BU
+ ILD-20180301.043903-634.jar attoparser-2.0.4.RELEASE.jar
+Main-Class: 
+
