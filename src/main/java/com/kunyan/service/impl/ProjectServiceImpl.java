@@ -53,13 +53,31 @@ public class ProjectServiceImpl implements ProjectService {
         return null;
     }
 
+    private List<LocationOcr> getAllOcrs(JSONObject jsonObject) {
+        List<LocationOcr> locationOcrs = new ArrayList<>();
+        JSONArray wordsResult = jsonObject.getJSONArray("words_result");
+        for (int i = 0; i < wordsResult.length(); i++) {
+            JSONObject wordResult = wordsResult.getJSONObject(i);
+            String name = wordResult.getString("words");
+            JSONObject location = wordResult.getJSONObject("location");
+            int top = location.getInt("top");
+            int width = location.getInt("width");
+            int left = location.getInt("left");
+            int height = location.getInt("height");
+            LocationOcr locationOcr = new LocationOcr(name, left, top, width, height);
+            locationOcrs.add(locationOcr);
+        }
+        Collections.sort(locationOcrs);
+        return locationOcrs;
+    }
+
     private JSONObject ocrDetect(byte[] data) {
         // 初始化一个AipOcr
         AipOcr client = OciClient.getClient();
         // 调用接口
         HashMap<String, String> map = new HashMap<>();
         //map.put("vertexes_location", "true");
-        map.put("detect_direction", "true");
+        //map.put("detect_direction", "true");
         JSONObject res = client.accurateGeneral(data, map);
         return res;
     }
@@ -85,6 +103,21 @@ public class ProjectServiceImpl implements ProjectService {
             }
         }
         return ocrs;
+    }
+
+    private String getEndNumberString(String s) {
+        int i = 0;
+        for (i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= '0' && c <= '9') {
+                break;
+            }
+        }
+
+        if (i != s.length()) {
+            return s.substring(i).trim();
+        }
+        return null;
     }
 
     @Override
@@ -125,47 +158,78 @@ public class ProjectServiceImpl implements ProjectService {
         graphics.drawLine(middlex, 0, middlex, bufferedImage.getHeight());
 
         //left
+        LocationOcr sellerLeft = null;
+        LocationOcr sellerRight = null;
+        String sellerNumber = null;
+        String quantNumber = null;
+        LocationOcr quantLeft= null;
+        LocationOcr quantRight = null;
+        List<LocationOcr> allOcrs = getAllOcrs(jsonObject);
+
+        for (LocationOcr locationOcr : allOcrs) {
+            if (locationOcr.getX() < middlex) {
+                if (locationOcr.getValue().contains("SELLER PART")) {
+                    if (sellerLeft == null) {
+                        sellerLeft = locationOcr;
+                        sellerNumber = getEndNumberString(sellerLeft.getValue());
+                    }
+                } else if (locationOcr.getValue().contains("QUANT")) {
+                    if (quantLeft == null) {
+                        quantLeft = locationOcr;
+                        quantNumber = getEndNumberString(quantLeft.getValue());
+                    }
+                }
+            } else {
+                if (sellerNumber != null && sellerRight == null && locationOcr.getValue().equals(sellerNumber)) {
+                    sellerRight = locationOcr;
+                } else if (quantNumber != null && quantRight == null && locationOcr.getValue().equals(quantNumber)) {
+                    quantRight = locationOcr;
+                }
+            }
+        }
+
+        if (sellerRight != null && quantRight != null) {
+            graphics.drawRect(sellerLeft.getX(), sellerLeft.getY(), sellerLeft.getWidth(), sellerLeft.getHeight());
+            graphics.drawString(sellerNumber, sellerLeft.getX(), sellerLeft.getY());
+            graphics.drawRect(quantLeft.getX(), quantLeft.getY(), quantLeft.getWidth(), quantLeft.getHeight());
+            graphics.drawString(quantNumber, quantLeft.getX(), quantLeft.getY());
+            graphics.drawRect(sellerRight.getX(), sellerRight.getY(), sellerRight.getWidth(), sellerRight.getHeight());
+            graphics.drawRect(quantRight.getX(), quantRight.getY(), quantRight.getWidth(), quantRight.getHeight());
+            graphics.drawString("Seller No  equal:" + sellerNumber, middlex, 100);
+            graphics.drawString("Quant equal :" + sellerNumber, middlex, 200);
+            return bufferedImage;
+        }
+
+        // try detect left and right
         BufferedImage bufferedImageleft = bufferedImage.getSubimage(0, 0, middlex, bufferedImage.getHeight());
         byteArrayOutputStream.reset();
         ImageIO.write(bufferedImageleft, "jpg", byteArrayOutputStream);
         logger.info("开始调用百度接口查找左边-----------");
         jsonObject = ocrDetect(byteArrayOutputStream.toByteArray());
         logger.info("结束调用百度接口查找左边-----------");
-        LocationOcr seller = ocrRegDetect(jsonObject, "SELLER PART");
-        if (seller == null) {
+        sellerLeft = ocrRegDetect(jsonObject, "SELLER PART");
+        if (sellerLeft == null) {
             throw new IdentifyException("找不到seller part");
         }
-        graphics.drawRect(seller.getX(), seller.getY(), seller.getWidth(), seller.getHeight());
-        int i = 0;
-        for (i = 0; i < seller.getFullValue().length(); i++) {
-            char c = seller.getFullValue().charAt(i);
-            if (c >= '0' && c <= '9') {
-                break;
-            }
-        }
 
-        String sellerNumberLeft = "";
-        if (i != seller.getFullValue().length()) {
-            sellerNumberLeft = seller.getFullValue().substring(i).trim();
+        if (sellerLeft == null) {
+            throw new IdentifyException("找不到seller");
         }
-        graphics.drawString(sellerNumberLeft, seller.getX(), seller.getY());
-        LocationOcr quant = ocrRegDetect(jsonObject, "QUANT");
-        if (quant == null) {
+        sellerNumber = getEndNumberString(sellerLeft.getFullValue());
+
+        quantLeft = ocrRegDetect(jsonObject, "QUANT");
+        if (quantLeft == null) {
             throw new IdentifyException("找不到quant");
         }
-        graphics.drawRect(quant.getX(), quant.getY(), quant.getWidth(), quant.getHeight());
-        i = 0;
-        for (i = 0; i < quant.getFullValue().length(); i++) {
-            char c = quant.getFullValue().charAt(i);
-            if (c >= '0' && c <= '9') {
-                break;
-            }
+        quantNumber = getEndNumberString(quantLeft.getFullValue());
+        if (sellerNumber == null || quantNumber == null) {
+            throw new IdentifyException("left找不到数字");
         }
-        String quantNumberLeft = "";
-        if (i != quant.getFullValue().length()) {
-            quantNumberLeft = quant.getFullValue().substring(i).trim();
-        }
-        graphics.drawString(quantNumberLeft, quant.getX(), quant.getY());
+        graphics.drawRect(sellerLeft.getX(), sellerLeft.getY(), sellerLeft.getWidth(), sellerLeft.getHeight());
+        graphics.drawString(sellerNumber, sellerLeft.getX(), sellerLeft.getY());
+        graphics.drawRect(quantLeft.getX(), quantLeft.getY(), quantLeft.getWidth(), quantLeft.getHeight());
+        graphics.drawString(quantNumber, quantLeft.getX(), quantLeft.getY());
+
 
         // right
         BufferedImage bufferedImageright = bufferedImage.getSubimage(middlex, 0, bufferedImage.getWidth() - middlex, bufferedImage.getHeight());
@@ -175,7 +239,7 @@ public class ProjectServiceImpl implements ProjectService {
         jsonObject = ocrDetect(byteArrayOutputStream.toByteArray());
         logger.info("结束调用百度接口查找右边-----------");
         // draw seller number
-        List<LocationOcr> sellerRights = ocrRegDetectAll(jsonObject, sellerNumberLeft);
+        List<LocationOcr> sellerRights = ocrRegDetectAll(jsonObject, sellerNumber);
         LocationOcr leftest = null;
         if (sellerRights.size() > 0) {
             for (LocationOcr locationOcr : sellerRights) {
@@ -186,7 +250,7 @@ public class ProjectServiceImpl implements ProjectService {
             graphics.drawRect(leftest.getX() + middlex, leftest.getY(), leftest.getWidth(), leftest.getHeight());
         }
         // draw quant number
-        List<LocationOcr> quantRights = ocrRegDetectAll(jsonObject, quantNumberLeft);
+        List<LocationOcr> quantRights = ocrRegDetectAll(jsonObject, quantNumber);
         leftest = null;
         if (quantRights.size() > 0) {
             for (LocationOcr locationOcr : quantRights) {
@@ -196,11 +260,12 @@ public class ProjectServiceImpl implements ProjectService {
             }
             graphics.drawRect(leftest.getX() + middlex, leftest.getY(), leftest.getWidth(), leftest.getHeight());
         }
+
         if (sellerRights.size() > 0) {
-            graphics.drawString("Seller No  equal:" + sellerNumberLeft, middlex, 100);
+            graphics.drawString("Seller No  equal:" + sellerNumber, middlex, 100);
         }
         if (quantRights.size() > 0) {
-            graphics.drawString("Quant equal :" + quantNumberLeft, middlex, 200);
+            graphics.drawString("Quant equal :" + sellerNumber, middlex, 200);
         }
         return bufferedImage;
     }

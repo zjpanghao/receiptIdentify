@@ -1,6 +1,6 @@
 package com.kunyan.entity;
 
-public class LocationOcr {
+public class LocationOcr implements Comparable<LocationOcr>{
     private String value;
     private String fullValue;
     private int x;
@@ -62,5 +62,10 @@ public class LocationOcr {
 
     public void setFullValue(String fullValue) {
         this.fullValue = fullValue;
+    }
+
+    @Override
+    public int compareTo(LocationOcr o) {
+        return x - o.getX() == 0 ? y - o.getY() : x - o.getX();
     }
 }
