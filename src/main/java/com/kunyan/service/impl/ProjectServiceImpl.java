@@ -64,7 +64,6 @@ public class ProjectServiceImpl implements ProjectService {
 
     private List<LocationOcr> getAllOcrs(byte [] data) throws IdentifyException {
         JSONObject jsonObject = ocrDetect(data);
-        logger.info("结束调用百度接口查找分隔符-----------");
         if (jsonObject.has("error_msg")) {
             throw new IdentifyException("百度服务出错:" + jsonObject.getString("error_msg"));
         }
@@ -175,6 +174,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     public BufferedImage checkImage(BufferedImage image) throws IOException, IdentifyException {
+        long start = System.currentTimeMillis();
         // check image type
         if (image.getType() == BufferedImage.TYPE_4BYTE_ABGR) {
             BufferedImage newImage = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
@@ -282,6 +282,7 @@ public class ProjectServiceImpl implements ProjectService {
                             graphics.drawString(key + " equals :" + resultMap.get(key), middlex - MIDDISTENCE * 20, 100 * (j + 1));
                             graphics.drawImage(rightImage, middlex + (DISTENCE - MIDDISTENCE) * 20, 100 * (j + 1), null);
                         }
+                        graphics.drawString("用时:" + (System.currentTimeMillis() - start) / 1000.0 + "秒", 0, 30);
                         return bufferedImage;
                     }
                 }
