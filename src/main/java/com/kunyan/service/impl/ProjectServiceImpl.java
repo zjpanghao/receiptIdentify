@@ -1,12 +1,9 @@
 package com.kunyan.service.impl;
 
 import com.baidu.aip.ocr.AipOcr;
-import com.google.gson.Gson;
 import com.kunyan.config.DlConfig;
 import com.kunyan.entity.IdentifyException;
-import com.kunyan.entity.IdentifyResult;
 import com.kunyan.entity.LocationOcr;
-import com.kunyan.http.HttpUtil;
 import com.kunyan.service.ProjectService;
 import com.kunyan.service.TeService;
 import org.apache.commons.logging.Log;
@@ -14,17 +11,17 @@ import org.apache.commons.logging.LogFactory;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.*;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Service
 public class ProjectServiceImpl implements ProjectService {
@@ -35,40 +32,12 @@ public class ProjectServiceImpl implements ProjectService {
     private DlConfig dlConfig;
 
     private volatile BufferedImage rightImage = null;
-    private volatile BufferedImage errorImage = null;
-
-    public LocationOcr ocrRegDetect(JSONObject res, String regEx) {
-        JSONArray wordsResult = res.getJSONArray("words_result");
-        // String s = res.toString(2);
-        Pattern pattern = Pattern.compile(regEx);
-        for (int i = 0; i < wordsResult.length(); i++) {
-            JSONObject wordResult = wordsResult.getJSONObject(i);
-            String word = wordResult.getString("words");
-            //JSONObject location = wordResult.getJSONObject("location");
-            Matcher matcher = pattern.matcher(word);
-            if (matcher.find()) {
-                JSONObject location = wordResult.getJSONObject("location");
-                int top = location.getInt("top");
-                int width = location.getInt("width");
-                int left = location.getInt("left");
-                int height = location.getInt("height");
-                LocationOcr locationOcr = new LocationOcr(matcher.group(), left, top, width, height);
-                locationOcr.setFullValue(word);
-                return locationOcr;
-            }
-        }
-        return null;
-    }
 
     private List<LocationOcr> getAllOcrs(byte [] data) throws IdentifyException {
         JSONObject jsonObject = ocrDetect(data);
         if (jsonObject.has("error_msg")) {
             throw new IdentifyException("百度服务出错:" + jsonObject.getString("error_msg"));
         }
-        return getAllOcrs(jsonObject);
-    }
-
-    private List<LocationOcr> getAllOcrs(JSONObject jsonObject) {
         List<LocationOcr> locationOcrs = new ArrayList<>();
         JSONArray wordsResult = jsonObject.getJSONArray("words_result");
         for (int i = 0; i < wordsResult.length(); i++) {
@@ -87,52 +56,10 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     private JSONObject ocrDetect(byte[] data) {
-        // 初始化一个AipOcr
         AipOcr client = OciClient.getClient();
-        // 调用接口
         HashMap<String, String> map = new HashMap<>();
-        //map.put("vertexes_location", "true");
-        //map.put("detect_direction", "true");
         JSONObject res = client.accurateGeneral(data, map);
         return res;
-    }
-
-    public List<LocationOcr> ocrRegDetectAll(JSONObject res, String regEx) {
-        List<LocationOcr> ocrs = new ArrayList<>();
-        JSONArray wordsResult = res.getJSONArray("words_result");
-        // String s = res.toString(2);
-        Pattern pattern = Pattern.compile(regEx);
-        for (int i = 0; i < wordsResult.length(); i++) {
-            JSONObject wordResult = wordsResult.getJSONObject(i);
-            String word = wordResult.getString("words");
-            //JSONObject location = wordResult.getJSONObject("location");
-            Matcher matcher = pattern.matcher(word);
-            if (matcher.find()) {
-                JSONObject location = wordResult.getJSONObject("location");
-                int top = location.getInt("top");
-                int width = location.getInt("width");
-                int left = location.getInt("left");
-                int height = location.getInt("height");
-                LocationOcr locationOcr = new LocationOcr(matcher.group(), left, top, width, height);
-                ocrs.add(locationOcr);
-            }
-        }
-        return ocrs;
-    }
-
-    private String getEndNumberString(String s) {
-        int i = 0;
-        for (i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c >= '0' && c <= '9') {
-                break;
-            }
-        }
-
-        if (i != s.length()) {
-            return s.substring(i).trim();
-        }
-        return null;
     }
 
     private void drawFindRect(Graphics graphics, List<LocationOcr> locationOcrs) {
@@ -150,13 +77,7 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     private void mergeByLine(List<LocationOcr> ocrs) {
-//      int avgHeight = 0;
-//      for (LocationOcr locationOcr : ocrs) {
-//          avgHeight += locationOcr.getHeight();
-//      }
-//      avgHeight /= ocrs.size();
         LocationOcr pre = null;
-        int height = 0;
         Iterator<LocationOcr> it = ocrs.iterator();
         while (it.hasNext()) {
             LocationOcr locationOcr = it.next();
@@ -225,14 +146,6 @@ public class ProjectServiceImpl implements ProjectService {
             throw new IdentifyException("找不到图片左半部分");
         }
         graphics.drawLine(middlex, 0, middlex, bufferedImage.getHeight());
-
-        //left
-        LocationOcr sellerLeft = null;
-        LocationOcr sellerRight = null;
-        String sellerNumber = null;
-        String quantNumber = null;
-        LocationOcr quantLeft= null;
-        LocationOcr quantRight = null;
 
         List<LocationOcr> [] splitOcrs = teService.splitLocationOcrs(allOcrs,middlex);
 
