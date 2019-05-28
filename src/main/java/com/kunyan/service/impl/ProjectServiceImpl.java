@@ -2,6 +2,7 @@ package com.kunyan.service.impl;
 
 import com.baidu.aip.ocr.AipOcr;
 import com.google.gson.Gson;
+import com.kunyan.config.DlConfig;
 import com.kunyan.entity.IdentifyException;
 import com.kunyan.entity.IdentifyResult;
 import com.kunyan.entity.LocationOcr;
@@ -30,14 +31,11 @@ public class ProjectServiceImpl implements ProjectService {
     private Log logger = LogFactory.getLog(ProjectServiceImpl.class);
     @Autowired
     private TeService teService;
+    @Autowired
+    private DlConfig dlConfig;
+
     private volatile BufferedImage rightImage = null;
     private volatile BufferedImage errorImage = null;
-   // @Value("picture.right")
-    private String rightPath = "/home/iwookong/pics/right.jpg";
-    //private String rightPath = "d:\\right.jpg";
-    //@Value("picture.error")
-    private String errorPath = "/home/iwookong/pics/error.jpg";
-   // private String errorPath = "d:\\error.jpg";
 
     public LocationOcr ocrRegDetect(JSONObject res, String regEx) {
         JSONArray wordsResult = res.getJSONArray("words_result");
@@ -192,11 +190,13 @@ public class ProjectServiceImpl implements ProjectService {
         final int MIDDISTENCE = 22;
         final int MIDDLE_SPLIT = 100;
         if (rightImage == null) {
+            String rightPath = dlConfig.getRightPath();
+            //String errorPath = dlConfig.getErrorPath();
             logger.info(rightPath);
-            rightImage = ImageIO.read(new FileInputStream(rightPath));
-        }
-        if (errorImage == null) {
-            errorImage = ImageIO.read(new FileInputStream(errorPath));
+            InputStream inputStream = new FileInputStream(rightPath);
+            if (inputStream != null) {
+                rightImage = ImageIO.read(inputStream);
+            }
         }
         if (image == null) {
             throw new NullPointerException();
@@ -280,9 +280,11 @@ public class ProjectServiceImpl implements ProjectService {
                         for (int j = 0; j < array[i].size(); j++) {
                             String key = array[i].get(j);
                             graphics.drawString(key + " equals :" + resultMap.get(key), middlex - MIDDISTENCE * 20, 100 * (j + 1));
-                            graphics.drawImage(rightImage, middlex + (DISTENCE - MIDDISTENCE) * 20, 100 * (j + 1), null);
+                            if (rightImage != null) {
+                                graphics.drawImage(rightImage, middlex + (DISTENCE - MIDDISTENCE) * 20, 100 * (j + 1), null);
+                            }
                         }
-                        graphics.drawString("用时:" + (System.currentTimeMillis() - start) / 1000.0 + "秒", 0, 30);
+                        graphics.drawString("use time:" + (System.currentTimeMillis() - start) / 1000.0 + "s", 0, image.getHeight());
                         return bufferedImage;
                     }
                 }
