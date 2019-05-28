@@ -3,10 +3,22 @@ package com.kunyan.entity;
 public class LocationOcr implements Comparable<LocationOcr>{
     private String value;
     private String fullValue;
+    private String findValue;
+    private String findKey;
     private int x;
     private int y;
     private int width;
     private int height;
+    public LocationOcr(LocationOcr locationOcr) {
+        x = locationOcr.getX();
+        y = locationOcr.getY();
+        width = locationOcr.getWidth();
+        height = locationOcr.getHeight();
+        value = locationOcr.getValue();
+        findValue = locationOcr.getFullValue();
+        fullValue = locationOcr.getFullValue();
+        findKey = locationOcr.findKey;
+    }
 
     public LocationOcr(String value, int x, int y, int width, int height) {
         this.value = value;
@@ -64,8 +76,24 @@ public class LocationOcr implements Comparable<LocationOcr>{
         this.fullValue = fullValue;
     }
 
+    public String getFindValue() {
+        return findValue;
+    }
+
+    public void setFindValue(String findValue) {
+        this.findValue = findValue;
+    }
+
+    public String getFindKey() {
+        return findKey;
+    }
+
+    public void setFindKey(String findKey) {
+        this.findKey = findKey;
+    }
+
     @Override
     public int compareTo(LocationOcr o) {
-        return x - o.getX() == 0 ? y - o.getY() : x - o.getX();
+        return Math.abs(x - o.getX()) < 5 ? y - o.getY() : x - o.getX();
     }
 }

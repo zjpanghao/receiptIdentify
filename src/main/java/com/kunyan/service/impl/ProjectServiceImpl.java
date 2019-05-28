@@ -7,20 +7,19 @@ import com.kunyan.entity.IdentifyResult;
 import com.kunyan.entity.LocationOcr;
 import com.kunyan.http.HttpUtil;
 import com.kunyan.service.ProjectService;
+import com.kunyan.service.TeService;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.util.*;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -29,6 +28,16 @@ import java.util.regex.Pattern;
 @Service
 public class ProjectServiceImpl implements ProjectService {
     private Log logger = LogFactory.getLog(ProjectServiceImpl.class);
+    @Autowired
+    private TeService teService;
+    private volatile BufferedImage rightImage = null;
+    private volatile BufferedImage errorImage = null;
+   // @Value("picture.right")
+    private String rightPath = "/home/iwookong/pics/right.jpg";
+    //private String rightPath = "d:\\right.jpg";
+    //@Value("picture.error")
+    private String errorPath = "/home/iwookong/pics/error.jpg";
+   // private String errorPath = "d:\\error.jpg";
 
     public LocationOcr ocrRegDetect(JSONObject res, String regEx) {
         JSONArray wordsResult = res.getJSONArray("words_result");
@@ -51,6 +60,15 @@ public class ProjectServiceImpl implements ProjectService {
             }
         }
         return null;
+    }
+
+    private List<LocationOcr> getAllOcrs(byte [] data) throws IdentifyException {
+        JSONObject jsonObject = ocrDetect(data);
+        logger.info("结束调用百度接口查找分隔符-----------");
+        if (jsonObject.has("error_msg")) {
+            throw new IdentifyException("百度服务出错:" + jsonObject.getString("error_msg"));
+        }
+        return getAllOcrs(jsonObject);
     }
 
     private List<LocationOcr> getAllOcrs(JSONObject jsonObject) {
@@ -120,8 +138,66 @@ public class ProjectServiceImpl implements ProjectService {
         return null;
     }
 
+    private void drawFindRect(Graphics graphics, List<LocationOcr> locationOcrs) {
+        for (LocationOcr locationOcr : locationOcrs) {
+            graphics.drawRect(locationOcr.getX(), locationOcr.getY(), locationOcr.getWidth(), locationOcr.getHeight());
+            graphics.drawString(locationOcr.getFindValue(), locationOcr.getX(), locationOcr.getY());
+        }
+    }
+
+    private void drawGeneralRect(Graphics graphics, List<LocationOcr> locationOcrs) {
+        for (LocationOcr locationOcr : locationOcrs) {
+            graphics.drawRect(locationOcr.getX(), locationOcr.getY(), locationOcr.getWidth(), locationOcr.getHeight());
+            graphics.drawString(locationOcr.getValue(), locationOcr.getX(), locationOcr.getY());
+        }
+    }
+
+    private void mergeByLine(List<LocationOcr> ocrs) {
+//      int avgHeight = 0;
+//      for (LocationOcr locationOcr : ocrs) {
+//          avgHeight += locationOcr.getHeight();
+//      }
+//      avgHeight /= ocrs.size();
+        LocationOcr pre = null;
+        int height = 0;
+        Iterator<LocationOcr> it = ocrs.iterator();
+        while (it.hasNext()) {
+            LocationOcr locationOcr = it.next();
+            if (pre != null && Math.abs(locationOcr.getY() - pre.getY())< pre.getHeight() / 2 && Math.abs(locationOcr.getX() - pre.getX()) <pre.getWidth()) {
+                pre.setValue(pre.getValue() + locationOcr.getValue());
+                pre.setWidth((locationOcr.getX() - pre.getX()) + locationOcr.getWidth());
+                it.remove();
+            } else {
+                pre = locationOcr;
+            }
+        }
+    }
+
     @Override
     public BufferedImage checkImage(BufferedImage image) throws IOException, IdentifyException {
+        // check image type
+        if (image.getType() == BufferedImage.TYPE_4BYTE_ABGR) {
+            BufferedImage newImage = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
+            Graphics graphics = newImage.createGraphics();
+            graphics.drawImage(image, 0, 0, null);
+            graphics.dispose();
+            image = newImage;
+        }
+
+        if (image.getType() != BufferedImage.TYPE_3BYTE_BGR) {
+           throw  new IdentifyException("不支持的图片类型");
+        }
+
+        final int DISTENCE = 20;
+        final int MIDDISTENCE = 22;
+        final int MIDDLE_SPLIT = 100;
+        if (rightImage == null) {
+            logger.info(rightPath);
+            rightImage = ImageIO.read(new FileInputStream(rightPath));
+        }
+        if (errorImage == null) {
+            errorImage = ImageIO.read(new FileInputStream(errorPath));
+        }
         if (image == null) {
             throw new NullPointerException();
         }
@@ -129,29 +205,22 @@ public class ProjectServiceImpl implements ProjectService {
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(image.getHeight() * image.getWidth() * 3);
         ImageIO.write(image, "jpg", byteArrayOutputStream);
         logger.info("开始调用百度接口查找分隔符-----------");
-        JSONObject jsonObject = ocrDetect(byteArrayOutputStream.toByteArray());
-        logger.info("结束调用百度接口查找分隔符-----------");
-        if (jsonObject.has("error_msg")) {
-            throw new IdentifyException("百度服务出错:" + jsonObject.getString("error_msg"));
-        }
 
         // split
-        String [] spilt = {"LT#", "INT", "QTY"};
-        LocationOcr code1 = null;
-        for (String name : spilt) {
-            code1 = ocrRegDetect(jsonObject, name);
-            if (code1 != null) {
-                break;
-            }
-        }
-        if (code1 == null) {
+        String [] spilt = {"LT#", "INT", "QTY", "Prod"};
+        List<LocationOcr> allOcrs = getAllOcrs(byteArrayOutputStream.toByteArray());
+        logger.info("结束调用百度接口查找分隔符-----------");
+        LocationOcr splitOcr = teService.findSplitLocation(allOcrs, Arrays.asList(spilt));
+
+        if (splitOcr == null) {
             throw new IdentifyException("找不到分隔符, 请检查图片，或更精确抓取");
         }
+
         Graphics2D graphics = bufferedImage.createGraphics();
         graphics.setColor(Color.RED);
-        graphics.setFont(new Font("", Font.BOLD, 35));
+        graphics.setFont(new Font("", Font.BOLD, bufferedImage.getWidth() > 2000 ? 65 : 25));
         graphics.setStroke(new BasicStroke(8.0F));
-        int middlex = code1.getX() - 50;
+        int middlex = splitOcr.getX() - MIDDLE_SPLIT;
         if (middlex <= 0) {
             throw new IdentifyException("找不到图片左半部分");
         }
@@ -164,109 +233,86 @@ public class ProjectServiceImpl implements ProjectService {
         String quantNumber = null;
         LocationOcr quantLeft= null;
         LocationOcr quantRight = null;
-        List<LocationOcr> allOcrs = getAllOcrs(jsonObject);
 
-        for (LocationOcr locationOcr : allOcrs) {
-            if (locationOcr.getX() < middlex) {
-                if (locationOcr.getValue().contains("SELLER PART")) {
-                    if (sellerLeft == null) {
-                        sellerLeft = locationOcr;
-                        sellerNumber = getEndNumberString(sellerLeft.getValue());
+        List<LocationOcr> [] splitOcrs = teService.splitLocationOcrs(allOcrs,middlex);
+
+        List<String> [] array = new ArrayList[3];
+        array[0] = new ArrayList<>(Arrays.asList("SELLER PART", "QUANT"));
+        array[1] = new ArrayList<>(Arrays.asList("MATERIAL CODE", "QTY"));
+        array[2] = new ArrayList<>(Arrays.asList("INT SN", "QTY"));
+        Map<String, String> resultMap = new HashMap<>();
+        // method 0:notneed cutpicture  1:cut picture
+        for (int method = 0; method < 2; method++) {
+            if (method == 1) {
+                BufferedImage bufferedImageleft = bufferedImage.getSubimage(0, 0, middlex, bufferedImage.getHeight());
+                byteArrayOutputStream.reset();
+                ImageIO.write(bufferedImageleft, "jpg", byteArrayOutputStream);
+                logger.info("开始调用百度接口查找左边-----------");
+                splitOcrs[0] = getAllOcrs(byteArrayOutputStream.toByteArray());
+                logger.info("结束调用百度接口查找左边-----------");
+
+                BufferedImage bufferedImageright = bufferedImage.getSubimage(middlex, 0, bufferedImage.getWidth() - middlex, bufferedImage.getHeight());
+                byteArrayOutputStream.reset();
+                ImageIO.write(bufferedImageright, "jpg", byteArrayOutputStream);
+                logger.info("开始调用百度接口查找右边-----------");
+                splitOcrs[1] = getAllOcrs(byteArrayOutputStream.toByteArray());
+                logger.info("结束调用百度接口查找右边-----------");
+            }
+            mergeByLine(splitOcrs[0]);
+            for (int i = 0; i < array.length; i++) {
+                List<LocationOcr> identifyOcrs = teService.findIdentifyWords(splitOcrs[0], array[i]);
+                if (identifyOcrs.size() == array[i].size()) {
+                    resultMap.clear();
+                    List<String> values = new ArrayList<>();
+                    for (LocationOcr ocr : identifyOcrs) {
+                        values.add(ocr.getFindValue());
+                        resultMap.put(ocr.getFindKey(), ocr.getFindValue());
                     }
-                } else if (locationOcr.getValue().contains("QUANT")) {
-                    if (quantLeft == null) {
-                        quantLeft = locationOcr;
-                        quantNumber = getEndNumberString(quantLeft.getValue());
+                    List<LocationOcr> compareOcrs = teService.findCompareWords(splitOcrs[1], values);
+                    if (compareOcrs.size() == array[i].size()) {
+                        for (LocationOcr ocr: compareOcrs) {
+                            if (method == 1) {
+                                ocr.setX(ocr.getX() + middlex);
+                            }
+                            identifyOcrs.add(ocr);
+                        }
+                        drawFindRect(graphics, identifyOcrs);
+                        for (int j = 0; j < array[i].size(); j++) {
+                            String key = array[i].get(j);
+                            graphics.drawString(key + " equals :" + resultMap.get(key), middlex - MIDDISTENCE * 20, 100 * (j + 1));
+                            graphics.drawImage(rightImage, middlex + (DISTENCE - MIDDISTENCE) * 20, 100 * (j + 1), null);
+                        }
+                        return bufferedImage;
                     }
                 }
-            } else {
-                if (sellerNumber != null && sellerRight == null && locationOcr.getValue().equals(sellerNumber)) {
-                    sellerRight = locationOcr;
-                } else if (quantNumber != null && quantRight == null && locationOcr.getValue().equals(quantNumber)) {
-                    quantRight = locationOcr;
-                }
             }
         }
+       throw new IdentifyException("找不到相应数据或者结果不相等");
+    }
 
-        if (sellerRight != null && quantRight != null) {
-            graphics.drawRect(sellerLeft.getX(), sellerLeft.getY(), sellerLeft.getWidth(), sellerLeft.getHeight());
-            graphics.drawString(sellerNumber, sellerLeft.getX(), sellerLeft.getY());
-            graphics.drawRect(quantLeft.getX(), quantLeft.getY(), quantLeft.getWidth(), quantLeft.getHeight());
-            graphics.drawString(quantNumber, quantLeft.getX(), quantLeft.getY());
-            graphics.drawRect(sellerRight.getX(), sellerRight.getY(), sellerRight.getWidth(), sellerRight.getHeight());
-            graphics.drawRect(quantRight.getX(), quantRight.getY(), quantRight.getWidth(), quantRight.getHeight());
-            graphics.drawString("Seller No  equal:" + sellerNumber, middlex, 100);
-            graphics.drawString("Quant equal :" + sellerNumber, middlex, 200);
-            return bufferedImage;
-        }
-
-        // try detect left and right
-        BufferedImage bufferedImageleft = bufferedImage.getSubimage(0, 0, middlex, bufferedImage.getHeight());
-        byteArrayOutputStream.reset();
-        ImageIO.write(bufferedImageleft, "jpg", byteArrayOutputStream);
-        logger.info("开始调用百度接口查找左边-----------");
-        jsonObject = ocrDetect(byteArrayOutputStream.toByteArray());
-        logger.info("结束调用百度接口查找左边-----------");
-        sellerLeft = ocrRegDetect(jsonObject, "SELLER PART");
-        if (sellerLeft == null) {
-            throw new IdentifyException("找不到seller part");
+    @Override
+    public BufferedImage checkImageGeneral(BufferedImage image) throws IOException, IdentifyException {
+        // check image type
+        if (image.getType() == BufferedImage.TYPE_4BYTE_ABGR) {
+            BufferedImage newImage = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
+            Graphics graphics = newImage.createGraphics();
+            graphics.drawImage(image, 0, 0, null);
+            graphics.dispose();
+            image = newImage;
         }
 
-        if (sellerLeft == null) {
-            throw new IdentifyException("找不到seller");
+        if (image.getType() != BufferedImage.TYPE_3BYTE_BGR) {
+            throw  new IdentifyException("不支持的图片类型");
         }
-        sellerNumber = getEndNumberString(sellerLeft.getFullValue());
-
-        quantLeft = ocrRegDetect(jsonObject, "QUANT");
-        if (quantLeft == null) {
-            throw new IdentifyException("找不到quant");
-        }
-        quantNumber = getEndNumberString(quantLeft.getFullValue());
-        if (sellerNumber == null || quantNumber == null) {
-            throw new IdentifyException("left找不到数字");
-        }
-        graphics.drawRect(sellerLeft.getX(), sellerLeft.getY(), sellerLeft.getWidth(), sellerLeft.getHeight());
-        graphics.drawString(sellerNumber, sellerLeft.getX(), sellerLeft.getY());
-        graphics.drawRect(quantLeft.getX(), quantLeft.getY(), quantLeft.getWidth(), quantLeft.getHeight());
-        graphics.drawString(quantNumber, quantLeft.getX(), quantLeft.getY());
-
-
-        // right
-        BufferedImage bufferedImageright = bufferedImage.getSubimage(middlex, 0, bufferedImage.getWidth() - middlex, bufferedImage.getHeight());
-        byteArrayOutputStream.reset();
-        ImageIO.write(bufferedImageright, "jpg", byteArrayOutputStream);
-        logger.info("开始调用百度接口查找右边-----------");
-        jsonObject = ocrDetect(byteArrayOutputStream.toByteArray());
-        logger.info("结束调用百度接口查找右边-----------");
-        // draw seller number
-        List<LocationOcr> sellerRights = ocrRegDetectAll(jsonObject, sellerNumber);
-        LocationOcr leftest = null;
-        if (sellerRights.size() > 0) {
-            for (LocationOcr locationOcr : sellerRights) {
-                if (leftest == null || locationOcr.getX() < leftest.getX()) {
-                    leftest = locationOcr;
-                }
-            }
-            graphics.drawRect(leftest.getX() + middlex, leftest.getY(), leftest.getWidth(), leftest.getHeight());
-        }
-        // draw quant number
-        List<LocationOcr> quantRights = ocrRegDetectAll(jsonObject, quantNumber);
-        leftest = null;
-        if (quantRights.size() > 0) {
-            for (LocationOcr locationOcr : quantRights) {
-                if (leftest == null || locationOcr.getX() < leftest.getX()) {
-                    leftest = locationOcr;
-                }
-            }
-            graphics.drawRect(leftest.getX() + middlex, leftest.getY(), leftest.getWidth(), leftest.getHeight());
-        }
-
-        if (sellerRights.size() > 0) {
-            graphics.drawString("Seller No  equal:" + sellerNumber, middlex, 100);
-        }
-        if (quantRights.size() > 0) {
-            graphics.drawString("Quant equal :" + sellerNumber, middlex, 200);
-        }
-        return bufferedImage;
+        BufferedImage bufferedImage = image;
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(image.getHeight() * image.getWidth() * 3);
+        ImageIO.write(image, "jpg", byteArrayOutputStream);
+        Graphics2D graphics = bufferedImage.createGraphics();
+        graphics.setColor(Color.RED);
+        graphics.setFont(new Font("", Font.BOLD, bufferedImage.getWidth() > 2000 ? 65 : 25));
+        graphics.setStroke(new BasicStroke(8.0F));
+        List<LocationOcr> ocrs = getAllOcrs(byteArrayOutputStream.toByteArray());
+        drawGeneralRect(graphics, ocrs);
+        return  image;
     }
 }

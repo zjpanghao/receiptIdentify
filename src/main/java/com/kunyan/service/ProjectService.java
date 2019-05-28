@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface ProjectService {
     BufferedImage checkImage(BufferedImage image) throws IOException, IdentifyException;
+    BufferedImage checkImageGeneral(BufferedImage image) throws IOException, IdentifyException;
 }
