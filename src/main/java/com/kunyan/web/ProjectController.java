@@ -39,7 +39,7 @@ public class ProjectController {
     @ResponseBody
     public PictureItem identifyProject(@RequestBody String body ) {
         long start = System.currentTimeMillis();
-        logger.info("start call identify-------------" + System.currentTimeMillis());
+        logger.info("start call identify-------------" + start);
         PictureUpload pictureUpload = new Gson().fromJson(body, PictureUpload.class);
         PictureItem pictureItem = new PictureItem();
         pictureItem.setErrorCode(-3);
@@ -62,6 +62,8 @@ public class ProjectController {
             }
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(body.length());
             Graphics graphics = result.createGraphics();
+            graphics.setColor(Color.RED);
+            graphics.setFont(new Font("", Font.ITALIC, bufferedImage.getWidth() > 2000 ? 65 : 25));
             graphics.drawString("use time:" + (System.currentTimeMillis() - start) / 1000.0 + "s", 0, result.getHeight());
             ImageIO.write(result, "jpg", byteArrayOutputStream);
             pictureItem.setErrorCode(0);

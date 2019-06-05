@@ -19,6 +19,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.List;
 
@@ -55,9 +57,11 @@ public class ProjectServiceImpl implements ProjectService {
             String rightPath = dlConfig.getRightPath();
             //String errorPath = dlConfig.getErrorPath();
             logger.info(rightPath);
-            InputStream inputStream = new FileInputStream(rightPath);
-            if (inputStream != null) {
-                rightImage = ImageIO.read(inputStream);
+            if (Files.isReadable(Paths.get(rightPath))) {
+                InputStream inputStream = new FileInputStream(rightPath);
+                if (inputStream != null) {
+                    rightImage = ImageIO.read(inputStream);
+                }
             }
         }
         if (image == null) {
@@ -75,7 +79,7 @@ public class ProjectServiceImpl implements ProjectService {
         LocationOcr splitOcr = teService.findSplitLocation(allOcrs, Arrays.asList(spilt));
 
         if (splitOcr == null) {
-            throw new IdentifyException("找不到分隔符, 请检查图片，或更精确抓取");
+            return null;
         }
 
         Graphics2D graphics = bufferedImage.createGraphics();
@@ -84,7 +88,8 @@ public class ProjectServiceImpl implements ProjectService {
         graphics.setStroke(new BasicStroke(8.0F));
         int middlex = splitOcr.getX() - MIDDLE_SPLIT;
         if (middlex <= 0) {
-            throw new IdentifyException("找不到图片左半部分");
+            //throw new IdentifyException("找不到图片左半部分");
+            return null;
         }
         graphics.drawLine(middlex, 0, middlex, bufferedImage.getHeight());
 
@@ -138,13 +143,13 @@ public class ProjectServiceImpl implements ProjectService {
                                 graphics.drawImage(rightImage, middlex + (DISTENCE - MIDDISTENCE) * 20, 100 * (j + 1), null);
                             }
                         }
-                        graphics.drawString("use time:" + (System.currentTimeMillis() - start) / 1000.0 + "s", 0, image.getHeight());
+                       // graphics.drawString("use time:" + (System.currentTimeMillis() - start) / 1000.0 + "s", 0, image.getHeight());
                         return bufferedImage;
                     }
                 }
             }
         }
-       throw new IdentifyException("找不到相应数据或者结果不相等");
+      return null;
     }
 
     @Override

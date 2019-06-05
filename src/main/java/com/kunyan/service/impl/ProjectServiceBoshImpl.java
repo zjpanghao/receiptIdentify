@@ -117,14 +117,14 @@ public class ProjectServiceBoshImpl implements ProjectService {
                 BufferedImage bufferedImageleft = bufferedImage.getSubimage(0, 0, middlex, bufferedImage.getHeight());
                 byteArrayOutputStream.reset();
                 ImageIO.write(bufferedImageleft, "jpg", byteArrayOutputStream);
-                logger.info("开始调用百度接口查找左边-----------");
+                logger.info("开始调用bai接口查找左边-----------");
                 splitOcrs[1] = teService.getAllOcrs(byteArrayOutputStream.toByteArray());
-                logger.info("结束调用百度接口查找左边-----------");
+                logger.info("结束调用baidu接口查找左边-----------");
 
                 BufferedImage bufferedImageright = bufferedImage.getSubimage(middlex, 0, bufferedImage.getWidth() - middlex, bufferedImage.getHeight());
                 byteArrayOutputStream.reset();
                 ImageIO.write(bufferedImageright, "jpg", byteArrayOutputStream);
-                logger.info("开始调用百度接口查找右边-----------");
+                logger.info("开始调用接口查找右边-----------");
                 splitOcrs[0] = teService.getAllOcrs(byteArrayOutputStream.toByteArray());
                 logger.info("结束调用百度接口查找右边-----------");
             }

@@ -85,8 +85,6 @@ public class TeServiceImpl implements TeService {
     @Override
     public Map<String, LocationOcr> findIdentifyWordsDownNearest(List<LocationOcr> locationOcrs, List<String> keys) {
         Map<String, LocationOcr> tags = new HashMap<>();
-        List<LocationOcr> locationOcrList = new ArrayList<>();
-        Set<String> flagSet = new HashSet();
         for (LocationOcr locationOcr : locationOcrs) {
             for (String key : keys) {
                 Pattern identify = Pattern.compile(key, Pattern.CASE_INSENSITIVE);
@@ -111,7 +109,6 @@ public class TeServiceImpl implements TeService {
                 }
             }
         }
-
         return locationMap;
     }
 
