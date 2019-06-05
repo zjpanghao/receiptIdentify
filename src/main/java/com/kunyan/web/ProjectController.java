@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import javax.imageio.ImageIO;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -37,6 +38,7 @@ public class ProjectController {
     @RequestMapping("/identify")
     @ResponseBody
     public PictureItem identifyProject(@RequestBody String body ) {
+        long start = System.currentTimeMillis();
         logger.info("start call identify-------------" + System.currentTimeMillis());
         PictureUpload pictureUpload = new Gson().fromJson(body, PictureUpload.class);
         PictureItem pictureItem = new PictureItem();
@@ -59,6 +61,8 @@ public class ProjectController {
                 return pictureItem;
             }
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(body.length());
+            Graphics graphics = result.createGraphics();
+            graphics.drawString("use time:" + (System.currentTimeMillis() - start) / 1000.0 + "s", 0, result.getHeight());
             ImageIO.write(result, "jpg", byteArrayOutputStream);
             pictureItem.setErrorCode(0);
             pictureItem.setImageBase64(Base64.getEncoder().encodeToString(byteArrayOutputStream.toByteArray()));

@@ -169,7 +169,6 @@ public class ProjectServiceBoshImpl implements ProjectService {
                             }
                             j++;
                         }
-                        graphics.drawString("use time:" + (System.currentTimeMillis() - start) / 1000.0 + "s", 0, image.getHeight());
                         return bufferedImage;
                     }
                 }
