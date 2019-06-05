@@ -1,15 +1,14 @@
 package com.kunyan.service.impl;
 
-import com.baidu.aip.ocr.AipOcr;
 import com.kunyan.config.DlConfig;
 import com.kunyan.entity.IdentifyException;
 import com.kunyan.entity.LocationOcr;
+import com.kunyan.entity.PictureUpload;
+import com.kunyan.ocr.OcrUtil;
 import com.kunyan.service.ProjectService;
 import com.kunyan.service.TeService;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.json.JSONArray;
-import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -32,64 +31,6 @@ public class ProjectServiceImpl implements ProjectService {
     private DlConfig dlConfig;
 
     private volatile BufferedImage rightImage = null;
-
-    private List<LocationOcr> getAllOcrs(byte [] data) throws IdentifyException {
-        JSONObject jsonObject = ocrDetect(data);
-        if (jsonObject.has("error_msg")) {
-            throw new IdentifyException("百度服务出错:" + jsonObject.getString("error_msg"));
-        }
-        List<LocationOcr> locationOcrs = new ArrayList<>();
-        JSONArray wordsResult = jsonObject.getJSONArray("words_result");
-        for (int i = 0; i < wordsResult.length(); i++) {
-            JSONObject wordResult = wordsResult.getJSONObject(i);
-            String name = wordResult.getString("words");
-            JSONObject location = wordResult.getJSONObject("location");
-            int top = location.getInt("top");
-            int width = location.getInt("width");
-            int left = location.getInt("left");
-            int height = location.getInt("height");
-            LocationOcr locationOcr = new LocationOcr(name, left, top, width, height);
-            locationOcrs.add(locationOcr);
-        }
-        Collections.sort(locationOcrs);
-        return locationOcrs;
-    }
-
-    private JSONObject ocrDetect(byte[] data) {
-        AipOcr client = OciClient.getClient();
-        HashMap<String, String> map = new HashMap<>();
-        JSONObject res = client.accurateGeneral(data, map);
-        return res;
-    }
-
-    private void drawFindRect(Graphics graphics, List<LocationOcr> locationOcrs) {
-        for (LocationOcr locationOcr : locationOcrs) {
-            graphics.drawRect(locationOcr.getX(), locationOcr.getY(), locationOcr.getWidth(), locationOcr.getHeight());
-            graphics.drawString(locationOcr.getFindValue(), locationOcr.getX(), locationOcr.getY());
-        }
-    }
-
-    private void drawGeneralRect(Graphics graphics, List<LocationOcr> locationOcrs) {
-        for (LocationOcr locationOcr : locationOcrs) {
-            graphics.drawRect(locationOcr.getX(), locationOcr.getY(), locationOcr.getWidth(), locationOcr.getHeight());
-            graphics.drawString(locationOcr.getValue(), locationOcr.getX(), locationOcr.getY());
-        }
-    }
-
-    private void mergeByLine(List<LocationOcr> ocrs) {
-        LocationOcr pre = null;
-        Iterator<LocationOcr> it = ocrs.iterator();
-        while (it.hasNext()) {
-            LocationOcr locationOcr = it.next();
-            if (pre != null && Math.abs(locationOcr.getY() - pre.getY())< pre.getHeight() / 2 && Math.abs(locationOcr.getX() - pre.getX()) <pre.getWidth()) {
-                pre.setValue(pre.getValue() + locationOcr.getValue());
-                pre.setWidth((locationOcr.getX() - pre.getX()) + locationOcr.getWidth());
-                it.remove();
-            } else {
-                pre = locationOcr;
-            }
-        }
-    }
 
     @Override
     public BufferedImage checkImage(BufferedImage image) throws IOException, IdentifyException {
@@ -129,7 +70,7 @@ public class ProjectServiceImpl implements ProjectService {
 
         // split
         String [] spilt = {"LT#", "INT", "QTY", "Prod"};
-        List<LocationOcr> allOcrs = getAllOcrs(byteArrayOutputStream.toByteArray());
+        List<LocationOcr> allOcrs = teService.getAllOcrs(byteArrayOutputStream.toByteArray());
         logger.info("结束调用百度接口查找分隔符-----------");
         LocationOcr splitOcr = teService.findSplitLocation(allOcrs, Arrays.asList(spilt));
 
@@ -161,17 +102,17 @@ public class ProjectServiceImpl implements ProjectService {
                 byteArrayOutputStream.reset();
                 ImageIO.write(bufferedImageleft, "jpg", byteArrayOutputStream);
                 logger.info("开始调用百度接口查找左边-----------");
-                splitOcrs[0] = getAllOcrs(byteArrayOutputStream.toByteArray());
+                splitOcrs[0] = teService.getAllOcrs(byteArrayOutputStream.toByteArray());
                 logger.info("结束调用百度接口查找左边-----------");
 
                 BufferedImage bufferedImageright = bufferedImage.getSubimage(middlex, 0, bufferedImage.getWidth() - middlex, bufferedImage.getHeight());
                 byteArrayOutputStream.reset();
                 ImageIO.write(bufferedImageright, "jpg", byteArrayOutputStream);
                 logger.info("开始调用百度接口查找右边-----------");
-                splitOcrs[1] = getAllOcrs(byteArrayOutputStream.toByteArray());
+                splitOcrs[1] = teService.getAllOcrs(byteArrayOutputStream.toByteArray());
                 logger.info("结束调用百度接口查找右边-----------");
             }
-            mergeByLine(splitOcrs[0]);
+            OcrUtil.mergeByLine(splitOcrs[0]);
             for (int i = 0; i < array.length; i++) {
                 List<LocationOcr> identifyOcrs = teService.findIdentifyWords(splitOcrs[0], array[i]);
                 if (identifyOcrs.size() == array[i].size()) {
@@ -189,7 +130,7 @@ public class ProjectServiceImpl implements ProjectService {
                             }
                             identifyOcrs.add(ocr);
                         }
-                        drawFindRect(graphics, identifyOcrs);
+                        OcrUtil.drawFindRect(graphics, identifyOcrs);
                         for (int j = 0; j < array[i].size(); j++) {
                             String key = array[i].get(j);
                             graphics.drawString(key + " equals :" + resultMap.get(key), middlex - MIDDISTENCE * 20, 100 * (j + 1));
@@ -207,7 +148,7 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    public BufferedImage checkImageGeneral(BufferedImage image) throws IOException, IdentifyException {
+    public BufferedImage checkImageGeneral(BufferedImage image, PictureUpload pictureUpload) throws IOException, IdentifyException {
         // check image type
         if (image.getType() == BufferedImage.TYPE_4BYTE_ABGR) {
             BufferedImage newImage = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
@@ -225,10 +166,35 @@ public class ProjectServiceImpl implements ProjectService {
         ImageIO.write(image, "jpg", byteArrayOutputStream);
         Graphics2D graphics = bufferedImage.createGraphics();
         graphics.setColor(Color.RED);
-        graphics.setFont(new Font("", Font.BOLD, bufferedImage.getWidth() > 2000 ? 65 : 25));
-        graphics.setStroke(new BasicStroke(8.0F));
-        List<LocationOcr> ocrs = getAllOcrs(byteArrayOutputStream.toByteArray());
-        drawGeneralRect(graphics, ocrs);
+        graphics.setFont(new Font("", Font.ROMAN_BASELINE, bufferedImage.getWidth() > 2000 ? 65 : 18));
+        graphics.setStroke(new BasicStroke(3.0F));
+        List<LocationOcr> ocrs = teService.getAllOcrs(byteArrayOutputStream.toByteArray());
+        Iterator<LocationOcr> ocrIterator = ocrs.iterator();
+        while (ocrIterator.hasNext()) {
+            LocationOcr locationOcr = ocrIterator.next();
+            boolean find = false;
+            for (PictureUpload.ContainCheckItem contain : pictureUpload.getContains()) {
+                int inx = locationOcr.getValue().indexOf(contain.getValue());
+                if (inx != -1) {
+                    find = true;
+                    if (contain.getLen() > 0) {
+                        locationOcr.setValue(locationOcr.getValue().substring(inx, locationOcr.getValue().length() < inx + contain.getLen() ? locationOcr.getValue().length() : inx + contain.getLen()));
+                    }
+                    break;
+                }
+            }
+            if (!find && pictureUpload.getContains().size() > 0) {
+                ocrIterator.remove();
+            } else {
+                for (String exclude : pictureUpload.getExcludes()) {
+                    if (locationOcr.getValue().contains(exclude)) {
+                        ocrIterator.remove();
+                        break;
+                    }
+                }
+            }
+        }
+        OcrUtil.drawGeneralRect(graphics, ocrs);
         return  image;
     }
 }

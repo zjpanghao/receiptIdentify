@@ -17,7 +17,7 @@ public class OciClient {
         static AipOcr client = new AipOcr(appId, "MVyEclIpQWgGDTyMns3BcXsl", "gMgZruU45gpT5d5Fq3lk0YXUXbhzs7QB");
     }
 
-    static AipOcr getClient() {
+    public static AipOcr getClient() {
         if (config) {
             OciClientHolder.client.setConnectionTimeoutInMillis(2000);
             OciClientHolder.client.setSocketTimeoutInMillis(60000);

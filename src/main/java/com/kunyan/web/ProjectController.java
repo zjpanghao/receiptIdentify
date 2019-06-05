@@ -1,32 +1,37 @@
 package com.kunyan.web;
 
 import com.google.gson.Gson;
-import com.kunyan.entity.*;
+import com.kunyan.entity.IdentifyException;
+import com.kunyan.entity.PictureItem;
+import com.kunyan.entity.PictureUpload;
 import com.kunyan.service.ProjectService;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 
 import javax.imageio.ImageIO;
-import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Base64;
-import java.util.List;
-import java.util.Random;
-
-import static java.awt.image.BufferedImage.TYPE_INT_ARGB;
-import static java.awt.image.BufferedImage.TYPE_INT_RGB;
 
 @Controller
+@EnableAspectJAutoProxy
 public class ProjectController {
     private final Log logger = LogFactory.getLog(ProjectController.class);
     @Autowired
+    @Qualifier("projectServiceBoshImpl")
+    private ProjectService projectServiceBosh;
+
+    @Autowired
+    @Qualifier("projectServiceImpl")
     private ProjectService projectService;
 
     @RequestMapping("/identify")
@@ -44,7 +49,15 @@ public class ProjectController {
                 return pictureItem;
             }
 
-            BufferedImage result = projectService.checkImage(bufferedImage);
+            BufferedImage result = projectServiceBosh.checkImage(bufferedImage);
+            if (result == null) {
+                result = projectService.checkImage(bufferedImage);
+            }
+            if (result == null) {
+                pictureItem.setErrorCode(-5);
+                pictureItem.setErrorMsg("没有解析到对应数据信息");
+                return pictureItem;
+            }
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(body.length());
             ImageIO.write(result, "jpg", byteArrayOutputStream);
             pictureItem.setErrorCode(0);
@@ -84,7 +97,7 @@ public class ProjectController {
                 return pictureItem;
             }
 
-            BufferedImage result = projectService.checkImageGeneral(bufferedImage);
+            BufferedImage result = projectService.checkImageGeneral(bufferedImage, pictureUpload);
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(body.length());
             ImageIO.write(result, "jpg", byteArrayOutputStream);
             pictureItem.setErrorCode(0);

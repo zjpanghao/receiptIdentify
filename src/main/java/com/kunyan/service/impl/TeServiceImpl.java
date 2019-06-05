@@ -2,20 +2,18 @@ package com.kunyan.service.impl;
 
 import com.kunyan.entity.IdentifyException;
 import com.kunyan.entity.LocationOcr;
+import com.kunyan.ocr.OcrUtil;
 import com.kunyan.service.TeService;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
 public class TeServiceImpl implements TeService {
-
-
+    private Map<String, List<LocationOcr>> ocrMaps = new ConcurrentHashMap<>();
     private String getFirstNumberString(String s) {
         int i = 0;
         int start = -1;
@@ -85,6 +83,39 @@ public class TeServiceImpl implements TeService {
     }
 
     @Override
+    public Map<String, LocationOcr> findIdentifyWordsDownNearest(List<LocationOcr> locationOcrs, List<String> keys) {
+        Map<String, LocationOcr> tags = new HashMap<>();
+        List<LocationOcr> locationOcrList = new ArrayList<>();
+        Set<String> flagSet = new HashSet();
+        for (LocationOcr locationOcr : locationOcrs) {
+            for (String key : keys) {
+                Pattern identify = Pattern.compile(key, Pattern.CASE_INSENSITIVE);
+                Matcher matcher = identify.matcher(locationOcr.getValue());
+                if (matcher.find()) {
+                    tags.put(key, locationOcr);
+                }
+            }
+        }
+        Map<String, Integer> distanceMap = new HashMap<>();
+        Map<String, LocationOcr> locationMap = new HashMap<>();
+        for (LocationOcr locationOcr : locationOcrs) {
+            for (Map.Entry<String, LocationOcr> entry : tags.entrySet()) {
+                if (locationOcr.getY() <= entry.getValue().getY()) {
+                    continue;
+                }
+                int distance = (int)(Math.pow(locationOcr.getX() - entry.getValue().getX(), 2) +
+                        Math.pow(locationOcr.getY() - entry.getValue().getY(), 2));
+                if (distanceMap.get(entry.getKey()) == null || distance < distanceMap.get(entry.getKey())) {
+                    distanceMap.put(entry.getKey(), distance);
+                    locationMap.put(entry.getKey(), locationOcr);
+                }
+            }
+        }
+
+        return locationMap;
+    }
+
+    @Override
     public List<LocationOcr> findCompareWords(List<LocationOcr> locationOcrs, List<String> values) {
         List<LocationOcr> locationOcrList = new ArrayList<>();
         Set<String> flagSet = new HashSet();
@@ -113,6 +144,17 @@ public class TeServiceImpl implements TeService {
         for (LocationOcr ocr : locationOcrs) {
             ocrs[ocr.getX() < x ? 0 : 1].add(ocr);
         }
+        return ocrs;
+    }
+
+    @Override
+    public List<LocationOcr> getAllOcrs(byte[] data) throws IdentifyException {
+        String md5 = OcrUtil.md5(data);
+        List<LocationOcr> ocrs = ocrMaps.get(md5);
+        if (ocrs == null) {
+            ocrs = OcrUtil.getAllOcrs(data);
+        }
+        ocrMaps.put(md5, ocrs);
         return ocrs;
     }
 }
