@@ -2,9 +2,7 @@ package com.kunyan.service.impl;
 
 import com.baidu.aip.ocr.AipOcr;
 import com.kunyan.config.DlConfig;
-import com.kunyan.entity.IdentifyException;
-import com.kunyan.entity.LocationOcr;
-import com.kunyan.entity.PictureUpload;
+import com.kunyan.entity.*;
 import com.kunyan.ocr.OcrUtil;
 import com.kunyan.service.ProjectService;
 import com.kunyan.service.TeService;
@@ -17,13 +15,14 @@ import org.springframework.stereotype.Component;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.List;
-
-import static com.kunyan.ocr.OcrUtil.mergeByLine;
 
 @Component
 public class ProjectServiceBoshImpl implements ProjectService {
@@ -44,8 +43,9 @@ public class ProjectServiceBoshImpl implements ProjectService {
 
 
     @Override
-    public BufferedImage checkImage(BufferedImage image) throws IOException, IdentifyException {
+    public PictureItem checkImage(BufferedImage image) throws IOException, IdentifyException {
         long start = System.currentTimeMillis();
+        PictureItem pictureItem = new PictureItem();
         // check image type
         if (image.getType() == BufferedImage.TYPE_4BYTE_ABGR) {
             BufferedImage newImage = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
@@ -104,6 +104,9 @@ public class ProjectServiceBoshImpl implements ProjectService {
         }
         graphics.drawLine(middlex, 0, middlex, bufferedImage.getHeight());
         final int SEARCH_MODE_NUM = 1;
+        Map<String, String> chToeng = new HashMap<>();
+        chToeng.put("包装号", "Package number");
+        chToeng.put("材料数量", "Quantity");
         List<LocationOcr> [] splitOcrs = teService.splitLocationOcrs(allOcrs, middlex);
         java.util.List<String>[] arrayFindDown = new ArrayList[SEARCH_MODE_NUM];
         arrayFindDown[0] = new ArrayList<>(Arrays.asList("包装号", "材料数量"));
@@ -128,14 +131,17 @@ public class ProjectServiceBoshImpl implements ProjectService {
                 splitOcrs[0] = teService.getAllOcrs(byteArrayOutputStream.toByteArray());
                 logger.info("结束调用百度接口查找右边-----------");
             }
-            mergeByLine(splitOcrs[1]);
+            //mergeByLine(splitOcrs[1]);
             for (int i = 0; i < arrayFindDown.length; i++) {
                 Map<String, LocationOcr> identifyOcrs = teService.findIdentifyWordsDownNearest(splitOcrs[0], arrayFindDown[i]);
+                Set<String> checkValues = new HashSet<>();
                 if (identifyOcrs.size() == arrayFindDown[i].size()) {
 //                    resultMap.clear();
-                    java.util.List<String> values = new ArrayList<>();
+                    java.util.List<OcrFindItem> values = new ArrayList<>();
                     for (Map.Entry<String, LocationOcr> ocr : identifyOcrs.entrySet()) {
+                        checkValues.add(ocr.getValue().getValue());
                         ocr.getValue().setFindValue(ocr.getValue().getValue());
+                        ocr.getValue().setKey(new OcrFindItem(ocr.getKey(), ocr.getKey()));
                         if (method == 1) {
                             ocr.getValue().setX(ocr.getValue().getX() + middlex);
                         }
@@ -143,9 +149,11 @@ public class ProjectServiceBoshImpl implements ProjectService {
                         for (String downKey: arrayFindDown[i]) {
                             if (downKey.equals(ocr.getKey())) {
                                 if (arrayFindRegDirection.get(i).get(inx) == 0) {
-                                    values.add(arrayFindReg[i].get(inx) + ocr.getValue().getValue());
+                                    OcrFindItem ocrFindItem = new OcrFindItem(ocr.getKey(), arrayFindReg[i].get(inx) + ocr.getValue().getValue());
+                                    values.add(ocrFindItem);
                                 } else {
-                                    values.add(ocr.getValue().getValue() + arrayFindReg[i].get(inx));
+                                    OcrFindItem ocrFindItem = new OcrFindItem(ocr.getKey(), ocr.getValue().getValue() + arrayFindReg[i].get(inx));
+                                    values.add(ocrFindItem);
                                 }
                             }
                             inx++;
@@ -155,21 +163,60 @@ public class ProjectServiceBoshImpl implements ProjectService {
                     List<LocationOcr> compareOcrs = teService.findIdentifyWords(splitOcrs[1], values);
                     if (compareOcrs.size() == arrayFindDown[i].size()) {
                         List<LocationOcr> findOcrs = new ArrayList<>(identifyOcrs.values());
-                        for (LocationOcr ocr: compareOcrs) {
-                            ocr.setFindValue(OcrUtil.getNumberString(ocr.getValue()));
-                            findOcrs.add(ocr);
+                        for (LocationOcr locationOcr : compareOcrs) {
+                            logger.info("开始精准识别:" + locationOcr.getValue());
+                            LocationOcr reIdentify = teService.reIdentify(bufferedImage, locationOcr);
+                            logger.info("结束精准识别:" + reIdentify.getValue());
+                            reIdentify.setFindValue(OcrUtil.getNumberString(reIdentify.getValue()));
+                            reIdentify.setKey(locationOcr.getKey());
+                            if (i == 0) {
+                                if (reIdentify.getFindKey().contains(arrayFindReg[i].get(1)) && checkValues.contains(reIdentify.getFindValue())) {
+                                    findOcrs.add(reIdentify);
+                                } else if (reIdentify.getFindKey().contains(arrayFindReg[i].get(0)) && reIdentify.getFindValue().length() > 1 && checkValues.contains(reIdentify.getFindValue().substring(1))) {
+                                    findOcrs.add(reIdentify);
+                                }
+                            } else {
+                                if (checkValues.contains(reIdentify.getFindValue())) {
+                                    findOcrs.add(reIdentify);
+                                }
+                            }
                         }
+
                         OcrUtil.drawFindRect(graphics, findOcrs);
+                        if (findOcrs.size() != 2 * arrayFindDown[i].size()) {
+                            return null;
+                        }
+                        Map<String, String> resultMap = new HashMap<>();
+                        for (int k = 0; k < arrayFindDown[i].size(); k++) {
+                            resultMap.put(arrayFindDown[i].get(k), identifyOcrs.get(arrayFindDown[i].get(k)).getFindValue());
+                        }
                         int j = 0;
                         for (Map.Entry<String, LocationOcr> entry : identifyOcrs.entrySet()) {
                             String key = entry.getKey();
-                            graphics.drawString(key + " equals :" + entry.getValue().getValue(), middlex - MIDDISTENCE * 20, 100 * (j + 1));
+                            graphics.drawString(chToeng.get(key) + " equals :" + entry.getValue().getValue(), middlex - MIDDISTENCE * 20, 100 * (j + 1));
                             if (rightImage != null) {
                                 graphics.drawImage(rightImage, middlex + (DISTENCE - MIDDISTENCE) * 20, 100 * (j + 1), null);
                             }
                             j++;
                         }
-                        return bufferedImage;
+                        pictureItem.setErrorCode(0);
+                        byteArrayOutputStream.reset();
+                        ImageIO.write(bufferedImage, "jpg", byteArrayOutputStream);
+                        pictureItem.setErrorCode(0);
+                        List<LocationOcr> left = new ArrayList<>();
+                        List<LocationOcr> right = new ArrayList<>();
+                        for (LocationOcr locationOcr : findOcrs) {
+                            if (locationOcr.getX() < middlex) {
+                                left.add(locationOcr);
+                            } else {
+                                right.add(locationOcr);
+                            }
+                        }
+                        pictureItem.setLeftItems(left);
+                        pictureItem.setRightItems(right);
+                        pictureItem.setMiddleX(middlex);
+                        pictureItem.setImageBase64(Base64.getEncoder().encodeToString(byteArrayOutputStream.toByteArray()));
+                        return pictureItem;
                     }
                 }
             }

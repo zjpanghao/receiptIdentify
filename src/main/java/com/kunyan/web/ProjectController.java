@@ -16,7 +16,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import javax.imageio.ImageIO;
-import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -51,7 +50,7 @@ public class ProjectController {
                 return pictureItem;
             }
 
-            BufferedImage result = projectServiceBosh.checkImage(bufferedImage);
+            PictureItem result = projectServiceBosh.checkImage(bufferedImage);
             if (result == null) {
                 result = projectService.checkImage(bufferedImage);
             }
@@ -60,15 +59,7 @@ public class ProjectController {
                 pictureItem.setErrorMsg("没有解析到对应数据信息");
                 return pictureItem;
             }
-            ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(body.length());
-            Graphics graphics = result.createGraphics();
-            graphics.setColor(Color.RED);
-            graphics.setFont(new Font("", Font.ITALIC, bufferedImage.getWidth() > 2000 ? 65 : 25));
-            graphics.drawString("use time:" + (System.currentTimeMillis() - start) / 1000.0 + "s", 0, result.getHeight());
-            ImageIO.write(result, "jpg", byteArrayOutputStream);
-            pictureItem.setErrorCode(0);
-            pictureItem.setImageBase64(Base64.getEncoder().encodeToString(byteArrayOutputStream.toByteArray()));
-            return pictureItem;
+            return result;
         } catch (IdentifyException e) {
             pictureItem.setErrorCode(-1);
             pictureItem.setErrorMsg(e.getMsg());

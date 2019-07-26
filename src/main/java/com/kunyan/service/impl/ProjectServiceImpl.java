@@ -1,9 +1,7 @@
 package com.kunyan.service.impl;
 
 import com.kunyan.config.DlConfig;
-import com.kunyan.entity.IdentifyException;
-import com.kunyan.entity.LocationOcr;
-import com.kunyan.entity.PictureUpload;
+import com.kunyan.entity.*;
 import com.kunyan.ocr.OcrUtil;
 import com.kunyan.service.ProjectService;
 import com.kunyan.service.TeService;
@@ -15,14 +13,15 @@ import org.springframework.stereotype.Service;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.ByteArrayOutputStream;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static java.awt.image.BufferedImage.TYPE_3BYTE_BGR;
 
 @Service
 public class ProjectServiceImpl implements ProjectService {
@@ -35,18 +34,19 @@ public class ProjectServiceImpl implements ProjectService {
     private volatile BufferedImage rightImage = null;
 
     @Override
-    public BufferedImage checkImage(BufferedImage image) throws IOException, IdentifyException {
+    public PictureItem checkImage(BufferedImage image) throws IOException, IdentifyException {
         long start = System.currentTimeMillis();
+        PictureItem pictureItem = new PictureItem();
         // check image type
         if (image.getType() == BufferedImage.TYPE_4BYTE_ABGR) {
-            BufferedImage newImage = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
+            BufferedImage newImage = new BufferedImage(image.getWidth(), image.getHeight(), TYPE_3BYTE_BGR);
             Graphics graphics = newImage.createGraphics();
             graphics.drawImage(image, 0, 0, null);
             graphics.dispose();
             image = newImage;
         }
 
-        if (image.getType() != BufferedImage.TYPE_3BYTE_BGR) {
+        if (image.getType() != TYPE_3BYTE_BGR) {
            throw  new IdentifyException("不支持的图片类型");
         }
 
@@ -85,7 +85,7 @@ public class ProjectServiceImpl implements ProjectService {
         Graphics2D graphics = bufferedImage.createGraphics();
         graphics.setColor(Color.RED);
         graphics.setFont(new Font("", Font.BOLD, bufferedImage.getWidth() > 2000 ? 65 : 25));
-        graphics.setStroke(new BasicStroke(8.0F));
+        graphics.setStroke(new BasicStroke(3.0F));
         int middlex = splitOcr.getX() - MIDDLE_SPLIT;
         if (middlex <= 0) {
             //throw new IdentifyException("找不到图片左半部分");
@@ -119,7 +119,12 @@ public class ProjectServiceImpl implements ProjectService {
             }
             OcrUtil.mergeByLine(splitOcrs[0]);
             for (int i = 0; i < array.length; i++) {
-                List<LocationOcr> identifyOcrs = teService.findIdentifyWords(splitOcrs[0], array[i]);
+                List<OcrFindItem> ocrFindItems = new ArrayList<>();
+                for (int k = 0; k < array[i].size(); k++) {
+                    OcrFindItem ocrFindItem = new OcrFindItem(array[i].get(k), array[i].get(k));
+                    ocrFindItems.add(ocrFindItem);
+                }
+                List<LocationOcr> identifyOcrs = teService.findIdentifyWords(splitOcrs[0], ocrFindItems);
                 if (identifyOcrs.size() == array[i].size()) {
                     resultMap.clear();
                     List<String> values = new ArrayList<>();
@@ -135,7 +140,7 @@ public class ProjectServiceImpl implements ProjectService {
                             }
                             identifyOcrs.add(ocr);
                         }
-                        OcrUtil.drawFindRect(graphics, identifyOcrs);
+                        OcrUtil.drawGeneralRectRight(graphics, identifyOcrs);
                         for (int j = 0; j < array[i].size(); j++) {
                             String key = array[i].get(j);
                             graphics.drawString(key + " equals :" + resultMap.get(key), middlex - MIDDISTENCE * 20, 100 * (j + 1));
@@ -143,8 +148,29 @@ public class ProjectServiceImpl implements ProjectService {
                                 graphics.drawImage(rightImage, middlex + (DISTENCE - MIDDISTENCE) * 20, 100 * (j + 1), null);
                             }
                         }
-                       // graphics.drawString("use time:" + (System.currentTimeMillis() - start) / 1000.0 + "s", 0, image.getHeight());
-                        return bufferedImage;
+                        graphics.drawString("use time:" + (System.currentTimeMillis() - start) / 1000.0 + "s", 0, image.getHeight());
+                        for (int k = 0; k < array[i].size(); k++) {
+                            List<String> items = array[i];
+                            resultMap.put(items.get(k), resultMap.get(items.get(k)));
+                        }
+
+                        pictureItem.setErrorCode(0);
+                        byteArrayOutputStream.reset();
+                        ImageIO.write(bufferedImage, "jpg", byteArrayOutputStream);
+                        pictureItem.setErrorCode(0);
+                        List<LocationOcr> left = new ArrayList<>();
+                        List<LocationOcr> right = new ArrayList<>();
+                        for (LocationOcr locationOcr : identifyOcrs) {
+                            if (locationOcr.getX() < middlex) {
+                                left.add(locationOcr);
+                            } else {
+                                right.add(locationOcr);
+                            }
+                        }
+                        pictureItem.setLeftItems(left);
+                        pictureItem.setRightItems(right);
+                        pictureItem.setImageBase64(Base64.getEncoder().encodeToString(byteArrayOutputStream.toByteArray()));
+                        return pictureItem;
                     }
                 }
             }
@@ -156,31 +182,38 @@ public class ProjectServiceImpl implements ProjectService {
     public BufferedImage checkImageGeneral(BufferedImage image, PictureUpload pictureUpload) throws IOException, IdentifyException {
         // check image type
         if (image.getType() == BufferedImage.TYPE_4BYTE_ABGR) {
-            BufferedImage newImage = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_3BYTE_BGR);
+            BufferedImage newImage = new BufferedImage(image.getWidth(), image.getHeight(), TYPE_3BYTE_BGR);
             Graphics graphics = newImage.createGraphics();
             graphics.drawImage(image, 0, 0, null);
             graphics.dispose();
             image = newImage;
         }
 
-        if (image.getType() != BufferedImage.TYPE_3BYTE_BGR) {
+        if (image.getType() != TYPE_3BYTE_BGR) {
             throw  new IdentifyException("不支持的图片类型");
         }
-        BufferedImage bufferedImage = image;
+        BufferedImage bufferedImage = new BufferedImage(image.getWidth(), image.getHeight(), TYPE_3BYTE_BGR);
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(image.getHeight() * image.getWidth() * 3);
+
         ImageIO.write(image, "jpg", byteArrayOutputStream);
         Graphics2D graphics = bufferedImage.createGraphics();
+        graphics.setColor(Color.WHITE);
+        graphics.fillRect(0, 0, bufferedImage.getWidth(), bufferedImage.getHeight());
+
         graphics.setColor(Color.RED);
-        graphics.setFont(new Font("", Font.ROMAN_BASELINE, bufferedImage.getWidth() > 2000 ? 65 : 18));
+        graphics.setFont(new Font("", Font.ROMAN_BASELINE, bufferedImage.getWidth() > 2000 ? 35 : 9));
         graphics.setStroke(new BasicStroke(3.0F));
+
         List<LocationOcr> ocrs = teService.getAllOcrs(byteArrayOutputStream.toByteArray());
         Iterator<LocationOcr> ocrIterator = ocrs.iterator();
         while (ocrIterator.hasNext()) {
             LocationOcr locationOcr = ocrIterator.next();
             boolean find = false;
             for (PictureUpload.ContainCheckItem contain : pictureUpload.getContains()) {
-                int inx = locationOcr.getValue().indexOf(contain.getValue());
-                if (inx != -1) {
+                Pattern identify = Pattern.compile(contain.getValue(), Pattern.CASE_INSENSITIVE);
+                Matcher matcher = identify.matcher(locationOcr.getValue());
+                if (matcher.matches()) {
+                    int inx = matcher.start();
                     find = true;
                     if (contain.getLen() > 0) {
                         locationOcr.setValue(locationOcr.getValue().substring(inx, locationOcr.getValue().length() < inx + contain.getLen() ? locationOcr.getValue().length() : inx + contain.getLen()));
@@ -199,7 +232,9 @@ public class ProjectServiceImpl implements ProjectService {
                 }
             }
         }
-        OcrUtil.drawGeneralRect(graphics, ocrs);
-        return  image;
+        OcrUtil.drawGeneralRectIn(graphics, ocrs);
+        ImageIO.write(bufferedImage, "jpg", new File("d:\\test.jpg"));
+
+        return  bufferedImage;
     }
 }

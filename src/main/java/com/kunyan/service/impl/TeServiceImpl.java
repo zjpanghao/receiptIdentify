@@ -2,10 +2,15 @@ package com.kunyan.service.impl;
 
 import com.kunyan.entity.IdentifyException;
 import com.kunyan.entity.LocationOcr;
+import com.kunyan.entity.OcrFindItem;
 import com.kunyan.ocr.OcrUtil;
 import com.kunyan.service.TeService;
 import org.springframework.stereotype.Service;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -49,29 +54,31 @@ public class TeServiceImpl implements TeService {
     }
 
     @Override
-    public List<LocationOcr> findIdentifyWords(List<LocationOcr> locationOcrs, List<String> keys) {
+    public List<LocationOcr> findIdentifyWords(List<LocationOcr> locationOcrs, List<OcrFindItem> keys) {
         List<LocationOcr> locationOcrList = new ArrayList<>();
         Set<String> flagSet = new HashSet();
+
         for (LocationOcr locationOcr: locationOcrs) {
-            for (String key : keys) {
-                Pattern identify = Pattern.compile(key, Pattern.CASE_INSENSITIVE);
+            for (OcrFindItem key : keys) {
+                Pattern identify = Pattern.compile(key.getFindKey(), Pattern.CASE_INSENSITIVE);
                 Matcher matcher = identify.matcher(locationOcr.getValue());
                 int inx = -1;
                 if (matcher.find()) {
                     inx = matcher.regionStart();
                 }
                 if (inx != -1) {
-                    if (!flagSet.contains(key)) {
+                    if (!flagSet.contains(key.getFindKey())) {
                         String value = locationOcr.getValue().substring(inx);
                         String findValue = getFirstNumberString(value);
                         if (findValue == null) {
                             continue;
                         }
                         LocationOcr find = new LocationOcr(locationOcr);
-                        find.setFindKey(key);
+                        find.setFindKey(key.getFindKey());
+                        find.setKey(key);
                         find.setFindValue(findValue);
                         locationOcrList.add(find);
-                        flagSet.add(key);
+                        flagSet.add(key.getFindKey());
                         if (locationOcrList.size() >= keys.size()) {
                             break;
                         }
@@ -150,8 +157,41 @@ public class TeServiceImpl implements TeService {
         List<LocationOcr> ocrs = ocrMaps.get(md5);
         if (ocrs == null) {
             ocrs = OcrUtil.getAllOcrs(data);
+            ocrMaps.put(md5, ocrs);
         }
-        ocrMaps.put(md5, ocrs);
-        return ocrs;
+        List<LocationOcr> copys = new ArrayList<>();
+        for (LocationOcr ocr : ocrs) {
+            LocationOcr locationOcr = new LocationOcr(ocr);
+            copys.add(locationOcr);
+        }
+        return copys;
+    }
+
+    @Override
+    public LocationOcr reIdentify(BufferedImage bufferedImage, LocationOcr locationOcr) {
+        BufferedImage sub =
+                bufferedImage.getSubimage(locationOcr.getX() - locationOcr.getWidth() / 2, locationOcr.getY() - locationOcr.getHeight() / 2,
+                        locationOcr.getWidth() * 2, locationOcr.getHeight() * 2);
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        try {
+            ImageIO.write(sub, "jpg", byteArrayOutputStream);
+            List<LocationOcr> ocrs = OcrUtil.getAllOcrs(byteArrayOutputStream.toByteArray());
+            if (ocrs.size() > 1) {
+                ocrs = findIdentifyWords(ocrs, Arrays.asList(locationOcr.getKey()));
+            }
+            if (ocrs.size() == 1) {
+                ocrs.get(0).setFindKey(locationOcr.getFindKey());
+                ocrs.get(0).setX(locationOcr.getX());
+                ocrs.get(0).setY(locationOcr.getY());
+                ocrs.get(0).setWidth(locationOcr.getWidth());
+                ocrs.get(0).setHeight(locationOcr.getHeight());
+                return ocrs.get(0);
+            }
+        } catch (IOException e) {
+
+        } catch (IdentifyException e) {
+
+        }
+        return locationOcr;
     }
 }

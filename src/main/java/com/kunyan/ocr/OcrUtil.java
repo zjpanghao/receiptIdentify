@@ -17,16 +17,38 @@ import java.util.List;
 public class OcrUtil {
 
     public static void drawFindRect(Graphics graphics, List<LocationOcr> locationOcrs) {
+        Color color = graphics.getColor();
         for (LocationOcr locationOcr : locationOcrs) {
+            graphics.setColor(Color.GREEN);
             graphics.drawRect(locationOcr.getX(), locationOcr.getY(), locationOcr.getWidth(), locationOcr.getHeight());
+            graphics.setColor(Color.RED);
             graphics.drawString(locationOcr.getFindValue(), locationOcr.getX(), locationOcr.getY());
         }
+        graphics.setColor(color);
     }
 
     public static  void drawGeneralRect(Graphics graphics, List<LocationOcr> locationOcrs) {
         for (LocationOcr locationOcr : locationOcrs) {
             graphics.drawRect(locationOcr.getX(), locationOcr.getY(), locationOcr.getWidth(), locationOcr.getHeight());
             graphics.drawString(locationOcr.getValue(), locationOcr.getX(), locationOcr.getY());
+        }
+    }
+
+    public static  void drawGeneralRectIn(Graphics graphics, List<LocationOcr> locationOcrs) {
+        for (LocationOcr locationOcr : locationOcrs) {
+            graphics.setColor(Color.GREEN);
+            graphics.drawRect(locationOcr.getX(), locationOcr.getY(), locationOcr.getWidth(), locationOcr.getHeight());
+            graphics.setColor(Color.RED);
+            graphics.drawString(locationOcr.getValue(), locationOcr.getX(), locationOcr.getY() + locationOcr.getHeight() / 2);
+        }
+    }
+
+    public static  void drawGeneralRectRight(Graphics graphics, List<LocationOcr> locationOcrs) {
+        for (LocationOcr locationOcr : locationOcrs) {
+            graphics.setColor(Color.GREEN);
+            graphics.drawRect(locationOcr.getX(), locationOcr.getY(), locationOcr.getWidth(), locationOcr.getHeight());
+            graphics.setColor(Color.RED);
+            graphics.drawString(locationOcr.getValue(), locationOcr.getX() + locationOcr.getWidth(), locationOcr.getY() + locationOcr.getHeight() / 2);
         }
     }
 
@@ -92,7 +114,8 @@ public class OcrUtil {
         }
 
         for (; i < s.length(); i++) {
-            if (s.charAt(i) < 0 || s.charAt(i) > 9) {
+            if (s.charAt(i) < '0' || s.charAt(i) > '9') {
+                end = i;
                 break;
             }
         }

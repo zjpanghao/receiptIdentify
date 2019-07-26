@@ -7,6 +7,7 @@ import org.apache.commons.logging.LogFactory;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
 
@@ -22,6 +23,7 @@ import java.util.concurrent.Executors;
 public class WebApplicationTests {
 	private Log logger = LogFactory.getLog(WebApplicationTests.class);
 	@Autowired
+	@Qualifier("projectServiceImpl")
 	private ProjectService projectService;
 	@Test
 	public void testThread() {

@@ -5,6 +5,7 @@ public class LocationOcr implements Comparable<LocationOcr>{
     private String fullValue;
     private String findValue;
     private String findKey;
+    private OcrFindItem key;
     private int x;
     private int y;
     private int width;
@@ -90,6 +91,14 @@ public class LocationOcr implements Comparable<LocationOcr>{
 
     public void setFindKey(String findKey) {
         this.findKey = findKey;
+    }
+
+    public OcrFindItem getKey() {
+        return key;
+    }
+
+    public void setKey(OcrFindItem key) {
+        this.key = key;
     }
 
     @Override
